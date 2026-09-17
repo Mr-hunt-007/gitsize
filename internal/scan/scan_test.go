@@ -2,6 +2,7 @@ package scan
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -360,7 +361,7 @@ func TestNewlineInPath(t *testing.T) {
 		t.Skip("file names cannot contain newlines on Windows")
 	}
 	requireGit(t)
-	v, err := gitx.GitVersion()
+	v, err := gitx.GitVersion(context.Background())
 	if err != nil || !v.AtLeast(2, 50) {
 		t.Skip("NUL-delimited rev-list needs git 2.50+")
 	}
@@ -474,5 +475,39 @@ func TestLegacyNewlineRevList(t *testing.T) {
 	}
 	if modern.Reachable != legacy.Reachable {
 		t.Errorf("reachable differs: %+v vs %+v", modern.Reachable, legacy.Reachable)
+	}
+}
+
+func TestAvailableCounts(t *testing.T) {
+	f := buildFixture(t)
+	tests := []struct {
+		by   string
+		rows int64
+	}{
+		{ByBlob, 7}, // 7 blob versions in history
+		{ByPath, 6},
+		{ByExt, 3}, // .bin, .dat, .md
+	}
+	for _, tt := range tests {
+		rep, err := Run(Config{Dir: f.dir, Largest: 1, Sort: analyze.SortDisk, By: tt.by})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rep.Available.Rows != tt.rows {
+			t.Errorf("%s: available rows %d, want %d", tt.by, rep.Available.Rows, tt.rows)
+		}
+		if rep.Available.FixPaths != 1 || rep.Fix == nil || len(rep.Fix.Paths) != 1 {
+			t.Errorf("%s: fix paths available %d, fix %+v", tt.by, rep.Available.FixPaths, rep.Fix)
+		}
+	}
+}
+
+func TestRunContextCancelled(t *testing.T) {
+	f := buildFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rep, err := RunContext(ctx, Config{Dir: f.dir, Largest: 10, Sort: analyze.SortDisk, By: ByBlob})
+	if !errors.Is(err, context.Canceled) || rep != nil {
+		t.Errorf("cancelled scan: rep=%v err=%v", rep != nil, err)
 	}
 }

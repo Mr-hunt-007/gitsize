@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 (2026-09-17)
+
+- `--mcp` runs an MCP server over stdio with one read-only tool, `gitsize_report`, returning the same JSON as `--json`. Rows are capped (`largest`, default 10, max 100) and `notes` say when something was cut. Fix commands are returned as text only, with a note that they are for a human to review.
+- Cancelling an MCP call, or stopping the server with SIGINT or SIGTERM, kills the running git processes.
+- `--allow-destructive` is accepted with `--mcp` for consistency; there are no destructive tools.
+- `AGENTS.md`, `CLAUDE.md`, `llms.txt` and an Agent Skill in `skills/gitsize/`.
+
 ## 0.1.0 (2026-09-17)
 
 First release.

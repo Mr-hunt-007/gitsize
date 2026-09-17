@@ -1,0 +1,11 @@
+# gitsize
+
+> Explains why a git repository's .git is big: the largest blobs in all history, whether each is still in HEAD, the commit that introduced it, growth per month, and suggested fix commands.
+
+gitsize is a read-only Go CLI that uses the git CLI (2.31 or newer). It never rewrites history, runs gc or fetches. `gitsize --json` prints a stable JSON report with documented exit codes, and `gitsize --mcp` serves the same report to MCP clients as the read-only tool `gitsize_report`. The git filter-repo and BFG commands it prints are suggestions for a human to review.
+
+## Docs
+
+- [README](https://github.com/Mr-hunt-007/gitsize/blob/main/README.md): install, usage, flags, JSON shape, exit codes, limitations, MCP setup
+- [AGENTS.md](https://github.com/Mr-hunt-007/gitsize/blob/main/AGENTS.md): layout, build and test commands, contributor rules
+- [SKILL.md](https://github.com/Mr-hunt-007/gitsize/blob/main/skills/gitsize/SKILL.md): Agent Skill for using gitsize from a coding agent

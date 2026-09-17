@@ -2,21 +2,25 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/Mr-hunt-007/gitsize/internal/analyze"
 	"github.com/Mr-hunt-007/gitsize/internal/gitx"
+	"github.com/Mr-hunt-007/gitsize/internal/mcptools"
 	"github.com/Mr-hunt-007/gitsize/internal/render"
 	"github.com/Mr-hunt-007/gitsize/internal/scan"
 )
 
 // Version is the gitsize release.
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 // Exit codes.
 const (
@@ -44,6 +48,11 @@ Flags:
   --history         show growth: new blob bytes per month as a bar chart
   --json            print the report as JSON
   --no-color        disable colour (also honours NO_COLOR)
+  --mcp             run as an MCP server on stdin/stdout (one read-only tool,
+                    gitsize_report); other flags are ignored
+  --allow-destructive
+                    accepted with --mcp for parity with other tools; gitsize
+                    has no destructive tools, so it changes nothing
   --version         print the version
   -h, --help        show this help
 
@@ -60,8 +69,9 @@ Exit codes:
   4 git not found or older than 2.31
 `
 
-// Run is the whole program; it returns the process exit code.
-func Run(args []string, stdout, stderr io.Writer) int {
+// Run is the whole program; it returns the process exit code. stdin is only
+// read in --mcp mode.
+func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("gitsize", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	largest := fs.Int("largest", 10, "")
@@ -71,6 +81,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	asJSON := fs.Bool("json", false, "")
 	noColor := fs.Bool("no-color", false, "")
 	showVersion := fs.Bool("version", false, "")
+	mcpMode := fs.Bool("mcp", false, "")
+	allowDestructive := fs.Bool("allow-destructive", false, "")
 
 	var positional []string
 	rest := args
@@ -94,6 +106,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if *showVersion {
 		fmt.Fprintf(stdout, "gitsize %s\n", Version)
 		return ExitOK
+	}
+	if *mcpMode {
+		return serveMCP(stdin, stdout, stderr, *allowDestructive)
+	}
+	if *allowDestructive {
+		fmt.Fprintln(stderr, "gitsize: --allow-destructive only applies with --mcp")
+		return ExitUsage
 	}
 	if len(positional) > 1 {
 		fmt.Fprintf(stderr, "gitsize: expected at most one repository path, got %d\n", len(positional))
@@ -138,6 +157,20 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		err = render.Text(stdout, rep, useColor(stdout, *noColor))
 	}
 	if err != nil {
+		fmt.Fprintf(stderr, "gitsize: %v\n", err)
+		return ExitError
+	}
+	return ExitOK
+}
+
+// serveMCP runs the MCP server until stdin closes or the process gets
+// SIGINT or SIGTERM (clients send SIGTERM on shutdown). A signal cancels
+// running scans, which kills their git processes instead of orphaning them.
+func serveMCP(stdin io.Reader, stdout, stderr io.Writer, allowDestructive bool) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	err := mcptools.New(Version, allowDestructive).Serve(ctx, stdin, stdout)
+	if err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintf(stderr, "gitsize: %v\n", err)
 		return ExitError
 	}

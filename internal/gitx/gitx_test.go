@@ -1,11 +1,13 @@
 package gitx
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseVersion(t *testing.T) {
@@ -48,7 +50,7 @@ func TestRunnerErrors(t *testing.T) {
 	if !errors.As(err, &ge) || !strings.Contains(err.Error(), "definitely-not-a-git-command") {
 		t.Errorf("err = %v", err)
 	}
-	if _, err := GitVersion(); err != nil {
+	if _, err := GitVersion(context.Background()); err != nil {
 		t.Errorf("GitVersion: %v", err)
 	}
 	var out strings.Builder
@@ -61,5 +63,45 @@ func TestRunnerErrors(t *testing.T) {
 	}, "hash-object", "--stdin")
 	if err != nil || strings.TrimSpace(out.String()) != "ce013625030ba8dba906f756967f9e9ca394464a" {
 		t.Errorf("Stream: %q, %v", out.String(), err)
+	}
+}
+
+// TestStreamCancelKillsGit starts a git process that would read stdin
+// forever and checks that cancelling the context kills it and returns.
+func TestStreamCancelKillsGit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	r := Runner{Dir: t.TempDir(), Ctx: ctx}
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- r.Stream(func(w io.Writer) error {
+			buf := make([]byte, 64*1024)
+			close(started)
+			for {
+				if _, err := w.Write(buf); err != nil {
+					return err
+				}
+			}
+		}, func(rd io.Reader) error {
+			_, err := io.Copy(io.Discard, rd)
+			return err
+		}, "hash-object", "--stdin")
+	}()
+	<-started
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("err = %v, want context.Canceled", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Stream did not return after cancel")
+	}
+	if _, err := r.Output("version"); !errors.Is(err, context.Canceled) {
+		t.Errorf("Output with cancelled ctx: %v", err)
 	}
 }

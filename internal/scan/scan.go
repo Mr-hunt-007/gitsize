@@ -3,6 +3,7 @@ package scan
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -65,7 +66,13 @@ type scanner struct {
 
 // Run scans the repository described by cfg.
 func Run(cfg Config) (*Report, error) {
-	v, err := gitx.GitVersion()
+	return RunContext(context.Background(), cfg)
+}
+
+// RunContext is Run bounded by ctx: cancelling ctx kills the git processes
+// of the scan and returns ctx.Err().
+func RunContext(ctx context.Context, cfg Config) (*Report, error) {
+	v, err := gitx.GitVersion(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +81,7 @@ func Run(cfg Config) (*Report, error) {
 	}
 	s := &scanner{
 		cfg:       cfg,
-		git:       gitx.Runner{Dir: cfg.Dir},
+		git:       gitx.Runner{Dir: cfg.Dir, Ctx: ctx},
 		version:   v,
 		headPaths: map[string]string{},
 		headOIDs:  map[string]bool{},
@@ -90,7 +97,13 @@ func Run(cfg Config) (*Report, error) {
 	}
 	s.rep.Repository.GitVersion = v.String()
 	if err := s.run(); err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, err
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 	return s.rep, nil
 }
@@ -506,8 +519,11 @@ func (s *scanner) results(st *objectStats) error {
 			})
 			wantBlobs[b.OID] = &analyze.Intro{}
 		}
+		s.rep.Available.Rows = s.rep.Reachable.Blobs
 	case ByPath:
-		for _, g := range head(st.agg.Paths(), n) {
+		all := st.agg.Paths()
+		s.rep.Available.Rows = int64(len(all))
+		for _, g := range head(all, n) {
 			s.rep.Paths = append(s.rep.Paths, PathEntry{
 				Path: g.Key, Versions: g.Blobs, Size: g.Size, Disk: g.Disk,
 				Status: s.pathStatus(g.Key),
@@ -515,9 +531,13 @@ func (s *scanner) results(st *objectStats) error {
 			wantPaths[g.Key] = &analyze.Intro{}
 		}
 	case ByExt:
-		s.rep.Exts = groupEntries(head(st.agg.Exts(), n))
+		all := st.agg.Exts()
+		s.rep.Available.Rows = int64(len(all))
+		s.rep.Exts = groupEntries(head(all, n))
 	case ByDir:
-		s.rep.Dirs = groupEntries(head(st.agg.Dirs(), n))
+		all := st.agg.Dirs()
+		s.rep.Available.Rows = int64(len(all))
+		s.rep.Dirs = groupEntries(head(all, n))
 	}
 
 	// Fix candidates: deleted paths whose history is big. A path that still
@@ -535,6 +555,7 @@ func (s *scanner) results(st *objectStats) error {
 			fix = append(fix, g)
 		}
 		sort.SliceStable(fix, func(i, j int) bool { return fix[i].Disk > fix[j].Disk })
+		s.rep.Available.FixPaths = len(fix)
 		s.rep.Fix = analyze.BuildFix(head(fix, n))
 	}
 

@@ -23,7 +23,7 @@ func TestMain(m *testing.M) {
 
 func runCLI(args ...string) (int, string, string) {
 	var out, errb bytes.Buffer
-	code := Run(args, &out, &errb)
+	code := Run(args, strings.NewReader(""), &out, &errb)
 	return code, out.String(), errb.String()
 }
 
@@ -34,7 +34,7 @@ func TestUsageAndVersion(t *testing.T) {
 		stdout string
 		stderr string
 	}{
-		{[]string{"--version"}, ExitOK, "gitsize 0.1.0", ""},
+		{[]string{"--version"}, ExitOK, "gitsize 0.2.0", ""},
 		{[]string{"-h"}, ExitOK, "Usage:", ""},
 		{[]string{"--help"}, ExitOK, "Exit codes:", ""},
 		{[]string{"--bogus"}, ExitUsage, "", "flag provided but not defined"},
@@ -43,6 +43,9 @@ func TestUsageAndVersion(t *testing.T) {
 		{[]string{"--largest", "0"}, ExitUsage, "", "--largest must be at least 1"},
 		{[]string{"--largest", "x"}, ExitUsage, "", "invalid value"},
 		{[]string{"a", "b"}, ExitUsage, "", "at most one repository path"},
+		{[]string{"--help"}, ExitOK, "--allow-destructive", ""},
+		{[]string{"--allow-destructive"}, ExitUsage, "", "only applies with --mcp"},
+		{[]string{"--mcp"}, ExitOK, "", ""}, // empty stdin: serves nothing and exits
 	}
 	for _, tt := range tests {
 		code, out, errOut := runCLI(tt.args...)

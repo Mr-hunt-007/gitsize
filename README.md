@@ -13,6 +13,7 @@ It only reads. It never rewrites history, never runs `gc`, never fetches.
 - [Requirements](#requirements)
 - [Install](#install) (macOS, Linux, Windows)
 - [Usage](#usage)
+- [Use with AI agents](#use-with-ai-agents)
 - [Flags](#flags)
 - [What the numbers mean](#what-the-numbers-mean)
 - [JSON output](#json-output)
@@ -258,6 +259,82 @@ gitsize --json | jq '.largest_blobs[0]'
 gitsize /srv/git/project.git           # bare repository
 ```
 
+## Use with AI agents
+
+The CLI already works well from coding agents: `gitsize --json` prints one stable JSON object and the [exit codes](#exit-codes) are documented.
+
+`gitsize --mcp` also runs gitsize as an [MCP](https://modelcontextprotocol.io) server over stdio, so agents can call it as a tool. The client starts the process itself, so `gitsize` must be on the `PATH` the client sees. GUI apps often do not inherit your shell's `PATH`; if the server fails to start, use the absolute path of the binary instead (print it with `echo "$(go env GOPATH)/bin/gitsize"`, or `%USERPROFILE%\go\bin\gitsize.exe` on Windows).
+
+**Claude Code**
+
+```sh
+claude mcp add gitsize -- gitsize --mcp
+```
+
+Add `--scope user` before the name (`claude mcp add --scope user gitsize -- gitsize --mcp`) to enable it in every project.
+
+**Codex CLI**
+
+```sh
+codex mcp add gitsize -- gitsize --mcp
+```
+
+or in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.gitsize]
+command = "gitsize"
+args = ["--mcp"]
+```
+
+**Cursor**: `.cursor/mcp.json` in the project (or `~/.cursor/mcp.json` for all projects):
+
+```json
+{
+  "mcpServers": {
+    "gitsize": { "command": "gitsize", "args": ["--mcp"] }
+  }
+}
+```
+
+**VS Code**: `.vscode/mcp.json`:
+
+```json
+{
+  "servers": {
+    "gitsize": { "type": "stdio", "command": "gitsize", "args": ["--mcp"] }
+  }
+}
+```
+
+**Gemini CLI**: `~/.gemini/settings.json` (or `.gemini/settings.json` in the project):
+
+```json
+{
+  "mcpServers": {
+    "gitsize": { "command": "gitsize", "args": ["--mcp"] }
+  }
+}
+```
+
+Tools:
+
+| Tool | Access | What it answers |
+|---|---|---|
+| `gitsize_report` | read-only | Why `.git` is big: largest blobs, paths, extensions or directories in all history, status relative to HEAD, introducing commits, optional growth per month, and suggested fix commands. Same JSON as `--json`. Arguments: `dir`, `largest` (default 10, max 100), `sort`, `by`, `history`. |
+
+The tool never rewrites history. The `git filter-repo` and BFG commands in `fix` are text for a human to review, and the result says so in `notes`. When rows are cut by `largest`, `notes` says how many existed. Relative `dir` values resolve against the working directory the client starts the server in, which varies by client; pass an absolute path when in doubt. Cancelling a call stops its git processes.
+
+gitsize has no destructive tools, so `--allow-destructive` (accepted for consistency with related tools) changes nothing.
+
+**Agent Skill.** `skills/gitsize/SKILL.md` teaches an agent when and how to run the CLI. Install it for Claude Code with:
+
+```sh
+mkdir -p ~/.claude/skills && cp -r skills/gitsize ~/.claude/skills/
+```
+
+For Codex, copy it to `~/.agents/skills/` instead. Contributors and agents working on this repository should read [AGENTS.md](AGENTS.md).
+
 ## Flags
 
 | Flag | Default | Description |
@@ -268,6 +345,8 @@ gitsize /srv/git/project.git           # bare repository
 | `--history` | off | Growth chart: bytes of blobs first committed in each month. |
 | `--json` | off | Machine-readable output (see below). |
 | `--no-color` | off | Disable colour. Colour is also off when `NO_COLOR` is set or stdout is not a terminal. |
+| `--mcp` | off | Run as an MCP server on stdin/stdout. Other flags are ignored. See [Use with AI agents](#use-with-ai-agents). |
+| `--allow-destructive` | off | Only valid with `--mcp`. Accepted for consistency; gitsize has no destructive tools. |
 | `--version` | | Print the version. |
 | `-h`, `--help` | | Help with examples. |
 

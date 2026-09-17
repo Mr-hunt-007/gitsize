@@ -3,6 +3,7 @@ package gitx
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ErrGitNotFound is returned when no git executable is on PATH.
@@ -19,6 +21,9 @@ var ErrGitNotFound = errors.New("git executable not found on PATH")
 // Runner runs git commands against one repository directory.
 type Runner struct {
 	Dir string
+	// Ctx, when set, bounds every git process: cancelling it kills the
+	// running git commands. nil means no cancellation.
+	Ctx context.Context
 }
 
 // baseArgs are prepended to every invocation so user config cannot change the
@@ -27,7 +32,14 @@ var baseArgs = []string{"-c", "color.ui=never", "-c", "core.quotepath=false"}
 
 func (r Runner) command(args ...string) *exec.Cmd {
 	full := append(append([]string{}, baseArgs...), args...)
-	cmd := exec.Command("git", full...)
+	ctx := r.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	cmd := exec.CommandContext(ctx, "git", full...)
+	// If a killed git leaves a child holding its pipes open, stop waiting
+	// for them shortly after the kill instead of hanging.
+	cmd.WaitDelay = 2 * time.Second
 	cmd.Dir = r.Dir
 	cmd.Env = append(os.Environ(),
 		"GIT_OPTIONAL_LOCKS=0",  // never take the index lock
@@ -65,6 +77,9 @@ func (r Runner) Output(args ...string) ([]byte, error) {
 	if err := cmd.Run(); err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
 			return nil, ErrGitNotFound
+		}
+		if cerr := r.ctxErr(); cerr != nil {
+			return nil, cerr
 		}
 		return stdout.Bytes(), &Error{Args: args, Stderr: stderr.String(), Err: err}
 	}
@@ -112,6 +127,9 @@ func (r Runner) Stream(stdin func(io.Writer) error, consume func(io.Reader) erro
 	}
 	werr := <-writeErr
 	waitErr := cmd.Wait()
+	if cerr := r.ctxErr(); cerr != nil {
+		return cerr
+	}
 	if waitErr != nil {
 		return &Error{Args: args, Stderr: stderr.String(), Err: waitErr}
 	}
@@ -119,6 +137,13 @@ func (r Runner) Stream(stdin func(io.Writer) error, consume func(io.Reader) erro
 		return consumeErr
 	}
 	return werr
+}
+
+func (r Runner) ctxErr() error {
+	if r.Ctx == nil {
+		return nil
+	}
+	return r.Ctx.Err()
 }
 
 // Version is a parsed git version.
@@ -153,8 +178,8 @@ func ParseVersion(s string) (Version, error) {
 }
 
 // GitVersion runs `git version`.
-func GitVersion() (Version, error) {
-	out, err := Runner{}.Output("version")
+func GitVersion(ctx context.Context) (Version, error) {
+	out, err := Runner{Ctx: ctx}.Output("version")
 	if err != nil {
 		return Version{}, err
 	}

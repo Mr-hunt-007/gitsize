@@ -23,6 +23,19 @@ type Report struct {
 	Fix        *analyze.Fix         `json:"fix"`
 	Notes      []string             `json:"notes"`
 	Counts     analyze.CountObjects `json:"count_objects"`
+
+	// Available is not part of the JSON shape. It records how many rows
+	// existed before Largest was applied, so callers can say what was cut.
+	Available Available `json:"-"`
+}
+
+// Available counts rows before truncation to Largest.
+type Available struct {
+	// Rows is the number of entries for the selected By mode: blob versions,
+	// distinct paths, extensions or directories.
+	Rows int64
+	// FixPaths is the number of deleted paths over FixThreshold.
+	FixPaths int
 }
 
 // Repository describes what was scanned.
