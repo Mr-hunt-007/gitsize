@@ -1,0 +1,5 @@
+/gitsize
+/gitsize.exe
+/dist/
+*.test
+*.out
