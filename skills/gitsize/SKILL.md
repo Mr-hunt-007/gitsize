@@ -1,6 +1,6 @@
 ---
 name: gitsize
-description: Explain why a git repository's .git directory is big, finding the largest files in all history, whether they are still in HEAD, and the commit that added them. Use when a repo is slow to clone, fetch or check out in CI, when .git is unexpectedly large, or before removing big files from history.
+description: Explain why a git repository's .git directory is big, finding the largest files in all history, whether they are still in HEAD, and the commit that added them, or draw it as an SVG diagram. Use when a repo is slow to clone, fetch or check out in CI, when .git is unexpectedly large, or before removing big files from history.
 ---
 
 # gitsize
@@ -24,9 +24,10 @@ gitsize --json --by path               # all versions of each path summed
 gitsize --json --by ext                # per extension; --by dir per directory
 gitsize --json --sort size             # rank by uncompressed size instead of on-disk
 gitsize --json --history               # adds bytes first committed per month
+gitsize --json --svg docs/weight.svg   # also write a diagram (--svg-depth N, default 2)
 ```
 
-If the `gitsize` MCP server is configured, call `gitsize_report` with `dir`, `largest` (1 to 100), `sort`, `by` and `history` instead; it returns the same JSON.
+If the `gitsize` MCP server is configured, call `gitsize_report` with `dir`, `largest` (1 to 100), `sort`, `by` and `history` instead; it returns the same JSON. `gitsize_svg` (`dir`, `output`, `depth`, `sort`) writes the diagram and returns its absolute path.
 
 ## Reading the output
 
@@ -51,6 +52,6 @@ If the `gitsize` MCP server is configured, call `gitsize_report` with `dir`, `la
 
 ## Safety
 
-- gitsize itself is safe to run anywhere: it only reads.
+- gitsize itself is safe to run anywhere: it only reads the repository. `--svg FILE` writes (and overwrites) FILE; `gitsize_svg` refuses to overwrite a file gitsize did not write.
 - Do NOT run the `fix` commands on your own. They rewrite every commit id on every branch and tag, require a force-push, and every collaborator must re-clone. Show them to the user, point out that `deleted` only means absent from HEAD, and let the user decide.
 - BFG matches by file name in any directory, so it can remove more than the listed paths.

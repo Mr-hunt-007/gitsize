@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -73,7 +75,7 @@ func TestStreamCancelKillsGit(t *testing.T) {
 		t.Skip("git not installed")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	r := Runner{Dir: t.TempDir(), Ctx: ctx}
+	r := Runner{Dir: cancelTestDir(t), Ctx: ctx}
 	started := make(chan struct{})
 	done := make(chan error, 1)
 	go func() {
@@ -104,4 +106,36 @@ func TestStreamCancelKillsGit(t *testing.T) {
 	if _, err := r.Output("version"); !errors.Is(err, context.Canceled) {
 		t.Errorf("Output with cancelled ctx: %v", err)
 	}
+}
+
+// cancelTestDir is t.TempDir, except that on Windows removal is retried for a
+// few seconds: a process that just died can keep its working directory
+// locked briefly, and the git launcher's child is killed by a separate
+// taskkill call. What the test proves on every OS is that Stream returns
+// promptly after cancel; a directory still locked after the retries is
+// logged rather than failed, because that part depends on the runner's git
+// installation.
+func cancelTestDir(t *testing.T) string {
+	if runtime.GOOS != "windows" {
+		return t.TempDir()
+	}
+	dir, err := os.MkdirTemp("", "gitx-cancel-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			err := os.RemoveAll(dir)
+			if err == nil {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Logf("could not remove %s after cancel (a git child process may still hold it): %v", dir, err)
+				return
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+	})
+	return dir
 }

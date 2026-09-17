@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -20,7 +21,7 @@ import (
 )
 
 // Version is the gitsize release.
-const Version = "0.2.0"
+const Version = "0.3.0"
 
 // Exit codes.
 const (
@@ -47,9 +48,18 @@ Flags:
                     "ext" (by file extension) or "dir" (by containing directory)
   --history         show growth: new blob bytes per month as a bar chart
   --json            print the report as JSON
+  --svg [FILE]      also write an SVG diagram of where history weight lives:
+                    directories and files with every version summed, bars by
+                    on-disk size (--sort size: uncompressed), plus a strip
+                    splitting it into in HEAD, old versions and deleted.
+                    Without FILE (or when the next argument does not end in
+                    .svg) it is saved as <repo>-gitsize.svg in the current
+                    directory. The normal output still prints
+  --svg-depth N     levels drawn in the SVG; 0 = unlimited (default 2)
   --no-color        disable colour (also honours NO_COLOR)
-  --mcp             run as an MCP server on stdin/stdout (one read-only tool,
-                    gitsize_report); other flags are ignored
+  --mcp             run as an MCP server on stdin/stdout (tools gitsize_report,
+                    read-only, and gitsize_svg, writes a new SVG file); other
+                    flags are ignored
   --allow-destructive
                     accepted with --mcp for parity with other tools; gitsize
                     has no destructive tools, so it changes nothing
@@ -63,6 +73,8 @@ Examples:
   gitsize --by ext --sort size     uncompressed bytes per extension
   gitsize --history                when did the repository grow
   gitsize --json | jq '.largest_blobs[0]'
+  gitsize --svg                    also save <repo>-gitsize.svg
+  gitsize --svg docs/weight.svg --svg-depth 3 ~/src/myapp
 
 Exit codes:
   0 success, 1 git error, 2 usage error, 3 not a git repository,
@@ -83,6 +95,10 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	showVersion := fs.Bool("version", false, "")
 	mcpMode := fs.Bool("mcp", false, "")
 	allowDestructive := fs.Bool("allow-destructive", false, "")
+	svgOut := fs.String("svg", "", "")
+	svgDepth := fs.Int("svg-depth", render.SVGDepth, "")
+
+	args = expandOptional(args, "svg", ".svg")
 
 	var positional []string
 	rest := args
@@ -118,6 +134,16 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "gitsize: expected at most one repository path, got %d\n", len(positional))
 		return ExitUsage
 	}
+	svgDepthSet := false
+	fs.Visit(func(f *flag.Flag) { svgDepthSet = svgDepthSet || f.Name == "svg-depth" })
+	if svgDepthSet && *svgOut == "" {
+		fmt.Fprintln(stderr, "gitsize: --svg-depth only applies with --svg")
+		return ExitUsage
+	}
+	if *svgDepth < 0 {
+		fmt.Fprintln(stderr, "gitsize: --svg-depth must be 0 (unlimited) or more")
+		return ExitUsage
+	}
 	if *largest < 1 {
 		fmt.Fprintln(stderr, "gitsize: --largest must be at least 1")
 		return ExitUsage
@@ -139,7 +165,11 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		dir = positional[0]
 	}
 
-	rep, err := scan.Run(scan.Config{Dir: dir, Largest: *largest, Sort: sk, By: mode, History: *history})
+	cfg := scan.Config{Dir: dir, Largest: *largest, Sort: sk, By: mode, History: *history}
+	if *svgOut != "" {
+		cfg.Tree = &scan.TreeOptions{Depth: *svgDepth, Top: render.SVGTop, DeepTop: render.SVGDeepTop}
+	}
+	rep, err := scan.Run(cfg)
 	if err != nil {
 		fmt.Fprintf(stderr, "gitsize: %v\n", err)
 		switch {
@@ -149,6 +179,18 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return ExitNoGit
 		}
 		return ExitError
+	}
+
+	if *svgOut != "" {
+		name := *svgOut
+		if name == svgAuto {
+			name = render.SVGFileName(rep.Repository.Name)
+		}
+		if err := writeSVG(name, rep); err != nil {
+			fmt.Fprintf(stderr, "gitsize: %v\n", err)
+			return ExitError
+		}
+		fmt.Fprintf(stderr, "gitsize: wrote %s\n", name)
 	}
 
 	if *asJSON {
@@ -175,6 +217,44 @@ func serveMCP(stdin io.Reader, stdout, stderr io.Writer, allowDestructive bool) 
 		return ExitError
 	}
 	return ExitOK
+}
+
+// svgAuto marks --svg given without a file name.
+const svgAuto = "\x00auto"
+
+// expandOptional lets a string flag be given without a value. "--name" takes
+// the next argument as its value only when that argument ends in ext;
+// otherwise the flag is set to svgAuto. "--name=value" is always explicit.
+func expandOptional(args []string, name, ext string) []string {
+	out := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			return append(out, args[i:]...)
+		}
+		if a != "-"+name && a != "--"+name {
+			out = append(out, a)
+			continue
+		}
+		if i+1 < len(args) && strings.HasSuffix(strings.ToLower(args[i+1]), ext) {
+			out = append(out, "--"+name+"="+args[i+1])
+			i++
+			continue
+		}
+		out = append(out, "--"+name+"="+svgAuto)
+	}
+	return out
+}
+
+func writeSVG(name string, rep *scan.Report) error {
+	var buf bytes.Buffer
+	if err := render.SVG(&buf, rep); err != nil {
+		return err
+	}
+	if err := os.WriteFile(name, buf.Bytes(), 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", name, err)
+	}
+	return nil
 }
 
 func useColor(w io.Writer, noColor bool) bool {

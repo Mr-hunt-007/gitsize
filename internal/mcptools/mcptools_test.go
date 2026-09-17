@@ -294,7 +294,7 @@ func TestServerEndToEnd(t *testing.T) {
 		outR, outW := io.Pipe()
 		done := make(chan error, 1)
 		go func() {
-			done <- mcptools.New("0.2.0", allow).Serve(context.Background(), inR, outW)
+			done <- mcptools.New("0.3.0", allow).Serve(context.Background(), inR, outW)
 			outW.Close()
 		}()
 		sc := bufio.NewScanner(outR)
@@ -326,8 +326,19 @@ func TestServerEndToEnd(t *testing.T) {
 
 		send(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 		tools := recv()["result"].(map[string]any)["tools"].([]any)
-		if len(tools) != 1 {
+		// gitsize has no destructive tools, so --allow-destructive changes nothing.
+		if len(tools) != 2 || tools[1].(map[string]any)["name"] != "gitsize_svg" {
 			t.Fatalf("allow=%v: tools = %v", allow, tools)
+		}
+		svgTool := tools[1].(map[string]any)
+		svgAnn := svgTool["annotations"].(map[string]any)
+		if svgAnn["readOnlyHint"] != false || svgAnn["destructiveHint"] != false {
+			t.Errorf("gitsize_svg annotations = %v", svgAnn)
+		}
+		for name, p := range svgTool["inputSchema"].(map[string]any)["properties"].(map[string]any) {
+			if d, _ := p.(map[string]any)["description"].(string); d == "" {
+				t.Errorf("gitsize_svg property %s has no description", name)
+			}
 		}
 		tool := tools[0].(map[string]any)
 		ann := tool["annotations"].(map[string]any)
@@ -353,6 +364,16 @@ func TestServerEndToEnd(t *testing.T) {
 			t.Errorf("call = %v", res)
 		}
 
+		svgOut := filepath.Join(t.TempDir(), "e2e.svg")
+		send(`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"gitsize_svg","arguments":{"dir":` + quote(dir) + `,"output":` + quote(svgOut) + `}}}`)
+		res = recv()["result"].(map[string]any)
+		if res["isError"] != nil || res["structuredContent"].(map[string]any)["path"] != svgOut {
+			t.Errorf("gitsize_svg call = %v", res)
+		}
+		if b, err := os.ReadFile(svgOut); err != nil || !strings.Contains(string(b), "dump &amp; backup.sql") {
+			t.Errorf("gitsize_svg file: %v", err)
+		}
+
 		send(`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"gitsize_report","arguments":{"dir":` + quote(t.TempDir()) + `}}}`)
 		res = recv()["result"].(map[string]any)
 		if res["isError"] != true || !strings.Contains(res["content"].([]any)[0].(map[string]any)["text"].(string), "not a git repository") {
@@ -368,5 +389,112 @@ func TestServerEndToEnd(t *testing.T) {
 		case <-time.After(10 * time.Second):
 			t.Fatal("server did not stop at EOF")
 		}
+	}
+}
+
+// svg calls the gitsize_svg handler directly.
+func svg(t *testing.T, args map[string]any) (mcptools.SVGResult, error) {
+	t.Helper()
+	raw, _ := json.Marshal(args)
+	res, err := mcptools.New("test", false).Tools[1].Handler(context.Background(), raw)
+	if err != nil {
+		return mcptools.SVGResult{}, err
+	}
+	var r mcptools.SVGResult
+	if err := json.Unmarshal([]byte(res.Text), &r); err != nil {
+		t.Fatalf("result is not JSON: %v\n%s", err, res.Text)
+	}
+	return r, nil
+}
+
+func chdir(t *testing.T, dir string) {
+	t.Helper()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(old) })
+}
+
+func TestSVGWritesAndReturnsAbsolutePath(t *testing.T) {
+	dir := fixtureRepo(t)
+	out := t.TempDir()
+	chdir(t, out)
+
+	r, err := svg(t, map[string]any{"dir": dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Base(dir) + "-gitsize.svg"
+	if !filepath.IsAbs(r.Path) || filepath.Base(r.Path) != want || r.Replaced || r.Depth != 2 || r.Sort != "disk" {
+		t.Errorf("result = %+v", r)
+	}
+	if r.InHeadDisk+r.OldDisk+r.DeletedDisk != r.BlobDiskBytes || r.DeletedDisk < 1<<20 {
+		t.Errorf("split does not add up: %+v", r)
+	}
+	b, err := os.ReadFile(filepath.Join(out, want))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b) != r.Bytes || !strings.Contains(string(b), "depth 2") || !strings.Contains(string(b), ">deleted</tspan>") {
+		t.Errorf("unexpected SVG (%d bytes, result says %d)", len(b), r.Bytes)
+	}
+
+	// Its own file is replaced; depth and sort apply.
+	r, err = svg(t, map[string]any{"dir": dir, "output": want, "depth": 1, "sort": "size"})
+	if err != nil || !r.Replaced {
+		t.Fatalf("second write: %+v, %v", r, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(out, want)); !strings.Contains(string(b), "bars by uncompressed size, depth 1") {
+		t.Error("file was not rewritten with depth 1 and sort size")
+	}
+
+	// A relative output resolves against the working directory.
+	os.Mkdir(filepath.Join(out, "docs"), 0o755)
+	r, err = svg(t, map[string]any{"dir": dir, "output": filepath.Join("docs", "weight.SVG")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi1, err1 := os.Stat(r.Path); err1 != nil {
+		t.Errorf("path %s: %v", r.Path, err1)
+	} else if fi2, _ := os.Stat(filepath.Join(out, "docs", "weight.SVG")); !os.SameFile(fi1, fi2) {
+		t.Errorf("path = %s", r.Path)
+	}
+}
+
+func TestSVGRefusals(t *testing.T) {
+	dir := fixtureRepo(t)
+	out := t.TempDir()
+	foreign := filepath.Join(out, "logo.svg")
+	os.WriteFile(foreign, []byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`), 0o644)
+	os.Mkdir(filepath.Join(out, "dir.svg"), 0o755)
+
+	cases := []struct {
+		args map[string]any
+		want string
+	}{
+		{map[string]any{"dir": dir, "output": foreign}, "not written by gitsize"},
+		{map[string]any{"dir": dir, "output": filepath.Join(out, "dir.svg")}, "not a regular file"},
+		{map[string]any{"dir": dir, "output": filepath.Join(out, "map.png")}, "must end in .svg"},
+		{map[string]any{"dir": dir, "output": filepath.Join(out, "nope", "m.svg")}, "does not exist"},
+		{map[string]any{"dir": t.TempDir(), "output": filepath.Join(out, "m.svg")}, "not a git repository"},
+		{map[string]any{"dir": dir, "output": filepath.Join(out, "m.svg"), "depth": -1}, "depth must be 0"},
+		{map[string]any{"dir": dir, "output": filepath.Join(out, "m.svg"), "sort": "fast"}, "sort must be"},
+		{map[string]any{"dir": dir, "by": "path"}, "unknown"},
+	}
+	for _, c := range cases {
+		_, err := svg(t, c.args)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("args %v: err = %v, want %q", c.args, err, c.want)
+		}
+	}
+	if b, _ := os.ReadFile(foreign); !strings.HasSuffix(string(b), "></svg>") {
+		t.Error("a foreign SVG was modified")
+	}
+	if _, err := os.Stat(filepath.Join(out, "m.svg")); err == nil {
+		t.Error("a failed call must not leave a file behind")
 	}
 }

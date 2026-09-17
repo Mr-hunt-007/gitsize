@@ -1,14 +1,19 @@
 // Package mcptools exposes gitsize as a Model Context Protocol tool set.
-// Handlers call the same scan and render code as the CLI, so a tool result
-// is byte for byte the JSON that `gitsize --json` prints, plus notes when rows
-// were cut to fit.
+// Handlers call the same scan and render code as the CLI, so a
+// gitsize_report result is byte for byte the JSON that `gitsize --json`
+// prints, plus notes when rows were cut to fit, and gitsize_svg writes the
+// same file as `gitsize --svg`.
 package mcptools
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Mr-hunt-007/gitsize/internal/analyze"
@@ -26,7 +31,8 @@ const (
 const instructions = "gitsize explains why a git repository's .git directory is big. " +
 	"Use gitsize_report when a clone, fetch or CI checkout is slow or large, or when asked which files bloat history, whether they still exist in HEAD, which commit added them, or when the repository grew. " +
 	"It only reads the repository through the git CLI: it never rewrites history, runs gc or fetches. " +
-	"Any git filter-repo or BFG commands in the result are suggestions for a human to review, never something to run on your own."
+	"Any git filter-repo or BFG commands in the result are suggestions for a human to review, never something to run on your own. " +
+	"gitsize_svg writes a diagram of where the history weight lives, for a README, an issue or a pull request."
 
 const reportDescription = `Explain why a git repository's .git is big. Reads every object reachable from any branch, tag, remote-tracking ref, stash or HEAD and returns the same JSON as ` + "`gitsize --json`" + `.
 
@@ -71,8 +77,178 @@ func New(version string, allowDestructive bool) *mcp.Server {
 				"history": mcp.Boolean("Also return growth over time: bytes of blobs first committed in each month. Default false."),
 			}),
 			Handler: report,
-		}},
+		}, svgTool()},
 	}
+}
+
+func svgTool() mcp.Tool {
+	return mcp.Tool{
+		Name:  "gitsize_svg",
+		Title: "Write a history weight diagram",
+		Description: "Writes an SVG diagram of where a git repository's history weight lives (the same file as `gitsize --svg`): " +
+			"directories, then files, with every blob version in history summed per path, as a horizontal tree with bars sized by " +
+			"on-disk bytes (sort \"size\": uncompressed). It shows the 8 heaviest entries at the first level and 5 below, marks paths deleted " +
+			"from HEAD, and adds a strip splitting the weight into in HEAD, old versions and deleted. Hover titles carry exact sizes, " +
+			"version counts and introducing commits. The file is standalone, follows light and dark schemes, and renders on GitHub. " +
+			"Use it when the user wants a picture of why .git is big for docs, an issue or a pull request; use gitsize_report to read the numbers yourself. " +
+			"It only reads the repository. It creates a new file; it replaces an existing file only if that file is an SVG previously written by gitsize, and refuses otherwise. " +
+			"Returns the absolute path written, whether a file was replaced, the byte size, and the totals drawn.",
+		Annotations: mcp.Writes("Write a history weight diagram"),
+		InputSchema: mcp.Object(map[string]any{
+			"dir":    mcp.String("Repository to draw: any directory inside a work tree, or a bare repository. Absolute, or relative to the server's working directory. Defaults to the server's working directory."),
+			"output": mcp.String("File to write, ending in .svg, absolute or relative to the server's working directory. Its directory must exist. Default: <repo>-gitsize.svg in the working directory, where <repo> is the repository's top-level directory name."),
+			"depth": map[string]any{
+				"type": "integer", "minimum": 0,
+				"description": fmt.Sprintf("Levels drawn below the root; deeper directories are drawn as one bar. 0 means unlimited. Default %d.", render.SVGDepth),
+			},
+			"sort": mcp.Enum(`Size the bars by "disk" (bytes in .git, compressed and deltified; default) or "size" (uncompressed).`, "disk", "size"),
+		}),
+		Handler: handleSVG,
+	}
+}
+
+type svgArgs struct {
+	Dir    string `json:"dir"`
+	Output string `json:"output"`
+	Depth  *int   `json:"depth"`
+	Sort   string `json:"sort"`
+}
+
+// SVGResult is gitsize_svg's JSON output.
+type SVGResult struct {
+	Path       string `json:"path"`     // absolute path of the written file
+	Replaced   bool   `json:"replaced"` // an earlier gitsize SVG was overwritten
+	Bytes      int    `json:"bytes"`
+	Repository string `json:"repository"`
+	Depth      int    `json:"depth"`
+	Sort       string `json:"sort"`
+	// Weight drawn: every blob version in history, on disk and uncompressed.
+	BlobDiskBytes int64 `json:"blob_disk_bytes"`
+	BlobBytes     int64 `json:"blob_bytes"`
+	// On-disk bytes by status relative to HEAD, as in the strip.
+	InHeadDisk  int64    `json:"in_head_disk_bytes"`
+	OldDisk     int64    `json:"old_versions_disk_bytes"`
+	DeletedDisk int64    `json:"deleted_disk_bytes"`
+	Notes       []string `json:"notes"`
+}
+
+func handleSVG(ctx context.Context, raw json.RawMessage) (mcp.Result, error) {
+	var a svgArgs
+	if err := mcp.Decode(raw, &a); err != nil {
+		return mcp.Result{}, err
+	}
+	depth := render.SVGDepth
+	if a.Depth != nil {
+		if *a.Depth < 0 {
+			return mcp.Result{}, fmt.Errorf("depth must be 0 (unlimited) or more, got %d", *a.Depth)
+		}
+		depth = *a.Depth
+	}
+	cfg, err := reportArgs{Dir: a.Dir, Sort: a.Sort}.config()
+	if err != nil {
+		return mcp.Result{}, err
+	}
+	// Check an explicit output before spending a scan on it.
+	if a.Output != "" {
+		if _, _, err := checkOutput(a.Output); err != nil {
+			return mcp.Result{}, err
+		}
+	}
+	cfg.Tree = &scan.TreeOptions{Depth: depth, Top: render.SVGTop, DeepTop: render.SVGDeepTop}
+	rep, err := scan.RunContext(ctx, cfg)
+	if err != nil {
+		return mcp.Result{}, err
+	}
+	out := a.Output
+	if out == "" {
+		out = render.SVGFileName(rep.Repository.Name)
+	}
+	absOut, replace, err := checkOutput(out)
+	if err != nil {
+		return mcp.Result{}, err
+	}
+	var buf bytes.Buffer
+	if err := render.SVG(&buf, rep); err != nil {
+		return mcp.Result{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return mcp.Result{}, err
+	}
+	if err := writeFile(absOut, buf.Bytes(), replace); err != nil {
+		return mcp.Result{}, err
+	}
+	sp := rep.Tree.Split
+	res := SVGResult{
+		Path: absOut, Replaced: replace, Bytes: buf.Len(), Repository: rep.Repository.Name,
+		Depth: depth, Sort: string(cfg.Sort),
+		BlobDiskBytes: rep.Reachable.BlobDisk, BlobBytes: rep.Reachable.BlobBytes,
+		InHeadDisk: sp[0].Disk, OldDisk: sp[1].Disk, DeletedDisk: sp[2].Disk,
+		Notes: rep.Notes,
+	}
+	b, err := json.Marshal(res)
+	if err != nil {
+		return mcp.Result{}, err
+	}
+	return mcp.Result{Text: string(b), Structured: json.RawMessage(b)}, nil
+}
+
+// checkOutput resolves an output path and reports whether an existing file
+// there may be replaced: only a regular file that gitsize wrote earlier may be.
+func checkOutput(out string) (string, bool, error) {
+	if !strings.HasSuffix(strings.ToLower(out), ".svg") {
+		return "", false, fmt.Errorf("output must end in .svg, got %q", out)
+	}
+	abs, err := filepath.Abs(out)
+	if err != nil {
+		return "", false, err
+	}
+	if fi, err := os.Stat(filepath.Dir(abs)); err != nil || !fi.IsDir() {
+		return "", false, fmt.Errorf("output directory %s does not exist", filepath.Dir(abs))
+	}
+	fi, err := os.Lstat(abs)
+	if errors.Is(err, os.ErrNotExist) {
+		return abs, false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if !fi.Mode().IsRegular() {
+		return "", false, fmt.Errorf("refusing to write %s: it exists and is not a regular file", abs)
+	}
+	f, err := os.Open(abs)
+	if err != nil {
+		return "", false, err
+	}
+	defer f.Close()
+	head := make([]byte, 1024)
+	n, _ := io.ReadFull(f, head)
+	if !bytes.Contains(head[:n], []byte(render.SVGMarker)) {
+		return "", false, fmt.Errorf("refusing to overwrite %s: it exists and was not written by gitsize; choose another output", abs)
+	}
+	return abs, true, nil
+}
+
+// writeFile creates path exclusively, or truncates it when replace is set.
+func writeFile(path string, data []byte, replace bool) error {
+	flags := os.O_WRONLY | os.O_CREATE | os.O_EXCL
+	if replace {
+		flags = os.O_WRONLY | os.O_TRUNC
+	}
+	f, err := os.OpenFile(path, flags, 0o644)
+	if errors.Is(err, os.ErrExist) {
+		return fmt.Errorf("refusing to overwrite %s: it was created while the diagram was being built", path)
+	}
+	if err != nil {
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	return nil
 }
 
 type reportArgs struct {

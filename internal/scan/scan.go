@@ -46,6 +46,8 @@ type Config struct {
 	Sort    analyze.SortKey
 	By      string
 	History bool
+	// Tree, when set, also builds the weight tree for the SVG diagram.
+	Tree *TreeOptions
 
 	// legacyRevList forces the newline-delimited rev-list path used on git
 	// older than 2.50 (for tests).
@@ -316,7 +318,9 @@ func (s *scanner) lfsLikely() (bool, error) {
 
 type objectStats struct {
 	agg           *analyze.Aggregator
-	sizes         map[string][2]int64 // only with --history
+	sizes         map[string][2]int64    // only with --history
+	weights       map[string]*pathWeight // only with Config.Tree
+	split         [4]SplitEntry
 	lfsCandidates []string
 }
 
@@ -328,6 +332,9 @@ func (s *scanner) objects(lfsLikely bool) (*objectStats, error) {
 	st := &objectStats{agg: analyze.NewAggregator(s.cfg.Sort, n)}
 	if s.cfg.History {
 		st.sizes = map[string][2]int64{}
+	}
+	if s.cfg.Tree != nil {
+		st.weights = map[string]*pathWeight{}
 	}
 	nul := s.version.AtLeast(2, 50) && !s.cfg.legacyRevList // rev-list -z --objects arrived in git 2.50
 	revArgs := []string{"rev-list", "--objects", "--all"}
@@ -379,6 +386,22 @@ func (s *scanner) objects(lfsLikely bool) (*objectStats, error) {
 			st.agg.Add(analyze.Blob{OID: o.OID, Path: o.Path, Size: o.Size, Disk: o.Disk})
 			if st.sizes != nil {
 				st.sizes[o.OID] = [2]int64{o.Size, o.Disk}
+			}
+			if st.weights != nil {
+				i := splitIndex(s.blobStatus(o.Path, o.OID))
+				st.split[i].Blobs++
+				st.split[i].Size += o.Size
+				st.split[i].Disk += o.Disk
+				w := st.weights[o.Path]
+				if w == nil {
+					w = &pathWeight{}
+					st.weights[o.Path] = w
+				}
+				w.versions++
+				w.size += o.Size
+				w.disk += o.Disk
+				w.statDisk[i] += o.Disk
+				w.statBlobs[i]++
 			}
 			if lfsLikely && o.Size < 1024 && o.Size >= 100 {
 				st.lfsCandidates = append(st.lfsCandidates, o.OID)
@@ -559,6 +582,15 @@ func (s *scanner) results(st *objectStats) error {
 		s.rep.Fix = analyze.BuildFix(head(fix, n))
 	}
 
+	if s.cfg.Tree != nil {
+		s.rep.Tree = s.tree(st)
+		s.rep.Tree.Root.Files(func(n *TreeNode) {
+			if n.Path != NoPath && wantPaths[n.Path] == nil {
+				wantPaths[n.Path] = &analyze.Intro{}
+			}
+		})
+	}
+
 	var first map[string]int64
 	if s.cfg.History {
 		first = make(map[string]int64, len(st.sizes))
@@ -596,6 +628,13 @@ func (s *scanner) results(st *objectStats) error {
 	for i := range s.rep.Paths {
 		s.rep.Paths[i].Introduced = introduced(wantPaths[s.rep.Paths[i].Path])
 	}
+	if s.rep.Tree != nil {
+		s.rep.Tree.Root.Files(func(n *TreeNode) {
+			if n.Path != NoPath {
+				n.Introduced = introduced(wantPaths[n.Path])
+			}
+		})
+	}
 	if first != nil {
 		months, un := analyze.BuildHistory(st.sizes, first)
 		s.rep.History = &History{Months: months, Unattributed: GroupEntry{Key: "unattributed", Blobs: un.Blobs, Size: un.Size, Disk: un.Disk}}
@@ -604,6 +643,30 @@ func (s *scanner) results(st *objectStats) error {
 		}
 	}
 	return nil
+}
+
+// tree builds the weight tree from the per-path totals gathered while
+// reading objects.
+func (s *scanner) tree(st *objectStats) *Tree {
+	o := *s.cfg.Tree
+	dirStatus := func(p string) string {
+		switch {
+		case !s.rep.Repository.HeadResolves:
+			return StatusUnknown
+		case p == "" || s.headDirs[p]:
+			return StatusInHead
+		}
+		return StatusDeleted
+	}
+	t := &Tree{
+		Root:  buildTree(st.weights, s.cfg.Sort, o, s.rep.Repository.Name, s.pathStatus, dirStatus),
+		Depth: o.Depth,
+		Split: st.split,
+	}
+	for i := range t.Split {
+		t.Split[i].Status = splitStatus[i]
+	}
+	return t
 }
 
 func head(gs []analyze.Group, n int) []analyze.Group {

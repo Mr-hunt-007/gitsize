@@ -34,7 +34,7 @@ func TestUsageAndVersion(t *testing.T) {
 		stdout string
 		stderr string
 	}{
-		{[]string{"--version"}, ExitOK, "gitsize 0.2.0", ""},
+		{[]string{"--version"}, ExitOK, "gitsize 0.3.0", ""},
 		{[]string{"-h"}, ExitOK, "Usage:", ""},
 		{[]string{"--help"}, ExitOK, "Exit codes:", ""},
 		{[]string{"--bogus"}, ExitUsage, "", "flag provided but not defined"},
@@ -46,6 +46,9 @@ func TestUsageAndVersion(t *testing.T) {
 		{[]string{"--help"}, ExitOK, "--allow-destructive", ""},
 		{[]string{"--allow-destructive"}, ExitUsage, "", "only applies with --mcp"},
 		{[]string{"--mcp"}, ExitOK, "", ""}, // empty stdin: serves nothing and exits
+		{[]string{"--svg-depth", "3"}, ExitUsage, "", "--svg-depth only applies with --svg"},
+		{[]string{"--svg", "--svg-depth", "-1"}, ExitUsage, "", "--svg-depth must be 0"},
+		{[]string{"--help"}, ExitOK, "--svg [FILE]", ""},
 	}
 	for _, tt := range tests {
 		code, out, errOut := runCLI(tt.args...)
@@ -118,5 +121,99 @@ func TestJSONOnRealRepo(t *testing.T) {
 	code, out, _ = runCLI(dir)
 	if code != ExitOK || strings.Contains(out, "\x1b[") || !strings.Contains(out, "Largest blobs") {
 		t.Errorf("text: code=%d\n%s", code, out)
+	}
+}
+
+// svgRepo makes a repository named "weightdemo" with a subdirectory and a
+// deleted file.
+func svgRepo(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	dir := filepath.Join(t.TempDir(), "weightdemo")
+	if err := os.MkdirAll(filepath.Join(dir, "src", "r&d"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=T", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "-c", "core.autocrlf=false"}, args...)...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-q", "-b", "main")
+	os.WriteFile(filepath.Join(dir, "src", "r&d", "notes.txt"), []byte(strings.Repeat("notes\n", 500)), 0o644)
+	os.WriteFile(filepath.Join(dir, "backup.sql"), []byte(strings.Repeat("insert into t values (1);\n", 4000)), 0o644)
+	git("add", "-A")
+	git("commit", "-q", "-m", "first")
+	git("rm", "-q", "backup.sql")
+	git("commit", "-q", "-m", "second")
+	return dir
+}
+
+func chdir(t *testing.T, dir string) {
+	t.Helper()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(old) })
+}
+
+func TestSVGDefaultNameFromSubdirectory(t *testing.T) {
+	repo := svgRepo(t)
+	sub := filepath.Join(repo, "src")
+	chdir(t, sub)
+	code, out, errOut := runCLI("--svg")
+	if code != ExitOK || !strings.Contains(out, "Largest blobs") {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, out, errOut)
+	}
+	if errOut != "gitsize: wrote weightdemo-gitsize.svg\n" {
+		t.Errorf("stderr = %q", errOut)
+	}
+	b, err := os.ReadFile(filepath.Join(sub, "weightdemo-gitsize.svg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	svg := string(b)
+	for _, want := range []string{`class="gs-svg"`, ">weightdemo<", ">backup.sql<", ">deleted</tspan>", "r&amp;d/", "depth 2"} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("SVG lacks %q", want)
+		}
+	}
+}
+
+func TestSVGFlagDoesNotSwallowRepoPath(t *testing.T) {
+	repo := svgRepo(t)
+	out := t.TempDir()
+	chdir(t, out)
+
+	// "--svg <repo>": the path does not end in .svg, so it stays the repository.
+	code, stdout, errOut := runCLI("--svg", repo, "--json", "--svg-depth", "1")
+	if code != ExitOK || !strings.HasPrefix(stdout, "{") || !strings.Contains(errOut, "wrote weightdemo-gitsize.svg") {
+		t.Fatalf("code=%d stdout=%.80q stderr=%q", code, stdout, errOut)
+	}
+	if b, err := os.ReadFile(filepath.Join(out, "weightdemo-gitsize.svg")); err != nil || !strings.Contains(string(b), "depth 1") {
+		t.Errorf("default SVG: %v", err)
+	}
+
+	// An explicit file name ending in .svg (any case) is taken as the output.
+	code, _, errOut = runCLI(repo, "--svg", "Weight.SVG", "--sort", "size")
+	if code != ExitOK || !strings.Contains(errOut, "wrote Weight.SVG") {
+		t.Fatalf("code=%d stderr=%q", code, errOut)
+	}
+	if b, err := os.ReadFile(filepath.Join(out, "Weight.SVG")); err != nil || !strings.Contains(string(b), "bars by uncompressed size") {
+		t.Errorf("explicit SVG: %v", err)
+	}
+
+	// --svg=FILE and a write failure.
+	code, _, errOut = runCLI("--svg="+filepath.Join(out, "missing", "x.svg"), repo)
+	if code != ExitError || !strings.Contains(errOut, "writing") {
+		t.Errorf("code=%d stderr=%q", code, errOut)
 	}
 }

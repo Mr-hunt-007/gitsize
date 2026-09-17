@@ -37,6 +37,7 @@ func (r Runner) command(args ...string) *exec.Cmd {
 		ctx = context.Background()
 	}
 	cmd := exec.CommandContext(ctx, "git", full...)
+	setCancel(cmd)
 	// If a killed git leaves a child holding its pipes open, stop waiting
 	// for them shortly after the kill instead of hanging.
 	cmd.WaitDelay = 2 * time.Second

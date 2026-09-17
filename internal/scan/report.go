@@ -24,6 +24,10 @@ type Report struct {
 	Notes      []string             `json:"notes"`
 	Counts     analyze.CountObjects `json:"count_objects"`
 
+	// Tree is built only when Config.Tree is set (for --svg). It is not
+	// part of the JSON shape.
+	Tree *Tree `json:"-"`
+
 	// Available is not part of the JSON shape. It records how many rows
 	// existed before Largest was applied, so callers can say what was cut.
 	Available Available `json:"-"`

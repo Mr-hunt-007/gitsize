@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" class="gs-svg" width="743" height="580" viewBox="0 0 743 580" role="img" aria-label="history weight of storefront">
+<style>
+.gs-svg text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:12px}
+.gs-svg .gs-title{font-size:15px;font-weight:600}
+.gs-svg .gs-bg{fill:#ffffff}
+.gs-svg .gs-fg{fill:#1f2328}
+.gs-svg .gs-strong{font-weight:600}
+.gs-svg .gs-muted{fill:#59636e}
+.gs-svg .gs-faint{fill:#818b98}
+.gs-svg .gs-more{font-style:italic}
+.gs-svg .gs-link{fill:none;stroke:#c8d1da;stroke-width:1.25}
+.gs-svg .gs-dashed{stroke-dasharray:3 3}
+.gs-svg .gs-rule{stroke:#d1d9e0;stroke-width:1}
+.gs-svg .gs-rootbar{fill:#57606a}
+@media (prefers-color-scheme: dark){
+.gs-svg .gs-bg{fill:#0d1117}
+.gs-svg .gs-fg{fill:#e6edf3}
+.gs-svg .gs-muted{fill:#9198a1}
+.gs-svg .gs-faint{fill:#6e7681}
+.gs-svg .gs-link{stroke:#3d444d}
+.gs-svg .gs-rule{stroke:#3d444d}
+.gs-svg .gs-rootbar{fill:#9198a1}
+}
+</style>
+<rect class="gs-bg" x="0" y="0" width="743" height="580"/>
+<text class="gs-fg gs-title" x="24" y="30">storefront</text>
+<text class="gs-muted" x="24" y="50">108 MiB .git, 123 objects, 4.3 MiB in HEAD  <tspan class="gs-faint">bars by on-disk size, depth 2</tspan></text>
+<g class="gs-links">
+<path class="gs-link" d="M184.0 277.0 H192.0 C213.0 277.0 213.0 85.0 234.0 85.0"/>
+<path class="gs-link" d="M400.0 85.0 H408.6 C429.6 85.0 429.6 85.0 450.6 85.0"/>
+<path class="gs-link" d="M184.0 277.0 H192.0 C213.0 277.0 213.0 117.0 234.0 117.0"/>
+<path class="gs-link" d="M289.3 117.0 H408.6 C429.6 117.0 429.6 117.0 450.6 117.0"/>
+<path class="gs-link" d="M184.0 277.0 H192.0 C213.0 277.0 213.0 165.0 234.0 165.0"/>
+<path class="gs-link" d="M279.1 165.0 H408.6 C429.6 165.0 429.6 149.0 450.6 149.0"/>
+<path class="gs-link" d="M279.1 165.0 H408.6 C429.6 165.0 429.6 181.0 450.6 181.0"/>
+<path class="gs-link" d="M184.0 277.0 H192.0 C213.0 277.0 213.0 229.0 234.0 229.0"/>
+<path class="gs-link" d="M277.4 229.0 H408.6 C429.6 229.0 429.6 213.0 450.6 213.0"/>
+<path class="gs-link" d="M277.4 229.0 H408.6 C429.6 229.0 429.6 245.0 450.6 245.0"/>
+<path class="gs-link" d="M184.0 277.0 H192.0 C213.0 277.0 213.0 277.0 234.0 277.0"/>
+<path class="gs-link" d="M254.8 277.0 H408.6 C429.6 277.0 429.6 277.0 450.6 277.0"/>
+<path class="gs-link" d="M184.0 277.0 H192.0 C213.0 277.0 213.0 341.0 234.0 341.0"/>
+<path class="gs-link" d="M243.0 341.0 H408.6 C429.6 341.0 429.6 309.0 450.6 309.0"/>
+<path class="gs-link" d="M243.0 341.0 H408.6 C429.6 341.0 429.6 341.0 450.6 341.0"/>
+<path class="gs-link" d="M243.0 341.0 H408.6 C429.6 341.0 429.6 373.0 450.6 373.0"/>
+<path class="gs-link" d="M184.0 277.0 H192.0 C213.0 277.0 213.0 405.0 234.0 405.0"/>
+<path class="gs-link" d="M184.0 277.0 H192.0 C213.0 277.0 213.0 437.0 234.0 437.0"/>
+<path class="gs-link gs-dashed" d="M184.0 277.0 H192.0 C213.0 277.0 213.0 469.0 234.0 469.0"/>
+</g>
+<g><title>storefront: 108 MiB on disk, 110 MiB uncompressed; 46 blob versions of 21 files (on disk: in HEAD 4.0 MiB, old versions 16 MiB, deleted 88 MiB)</title><text x="24.0" y="269.0"><tspan class="gs-fg gs-strong">storefront</tspan><tspan class="gs-muted" dx="7.3">108 MiB</tspan></text><rect class="gs-rootbar" x="24.0" y="273.0" width="160.0" height="8" rx="2"/></g>
+<g><title>data/: 57 MiB on disk, 57 MiB uncompressed; 1 blob version of 1 file; deleted (nothing under it in HEAD)</title><text x="240.0" y="77.0"><tspan class="gs-muted gs-strong">data/</tspan><tspan class="gs-muted" dx="7.3">57 MiB</tspan><tspan class="gs-faint gs-more" dx="7.3">deleted</tspan></text><rect x="240.0" y="81.0" width="160.0" height="8" rx="2" fill="#4e79a7"/></g>
+<g><title>data/db-dump.sql: 57 MiB on disk, 57 MiB uncompressed; deleted (not in HEAD); 1 version; introduced in 3634c40 on 2025-02-03</title><text x="456.6" y="77.0"><tspan class="gs-muted">db-dump.sql</tspan><tspan class="gs-muted" dx="7.3">57 MiB</tspan><tspan class="gs-faint gs-more" dx="7.3">deleted</tspan></text><rect x="456.6" y="81.0" width="160.0" height="8" rx="2" fill="#4e79a7"/></g>
+<g><title>build/: 18 MiB on disk, 18 MiB uncompressed; 6 blob versions of 1 file; deleted (nothing under it in HEAD)</title><text x="240.0" y="109.0"><tspan class="gs-muted gs-strong">build/</tspan><tspan class="gs-muted" dx="7.3">18 MiB</tspan><tspan class="gs-faint gs-more" dx="7.3">deleted</tspan></text><rect x="240.0" y="113.0" width="49.3" height="8" rx="2" fill="#f28e2b"/></g>
+<g><title>build/app.bundle.js: 18 MiB on disk, 18 MiB uncompressed; deleted (not in HEAD); 6 versions; introduced in 7131ca4 on 2025-02-10</title><text x="456.6" y="109.0"><tspan class="gs-muted">app.bundle.js</tspan><tspan class="gs-muted" dx="7.3">18 MiB</tspan><tspan class="gs-faint gs-more" dx="7.3">deleted</tspan></text><rect x="456.6" y="113.0" width="49.3" height="8" rx="2" fill="#f28e2b"/></g>
+<g><title>assets/: 14 MiB on disk, 14 MiB uncompressed; 8 blob versions of 3 files (on disk: in HEAD 2.9 MiB, old versions 11 MiB)</title><text x="240.0" y="157.0"><tspan class="gs-fg gs-strong">assets/</tspan><tspan class="gs-muted" dx="7.3">14 MiB</tspan></text><rect x="240.0" y="161.0" width="39.1" height="8" rx="2" fill="#e15759"/></g>
+<g><title>assets/images/: 14 MiB on disk, 14 MiB uncompressed; 7 blob versions of 2 files; contents not drawn at this depth (on disk: in HEAD 2.5 MiB, old versions 11 MiB)</title><text x="456.6" y="141.0"><tspan class="gs-fg">images/</tspan><tspan class="gs-muted" dx="7.3">14 MiB</tspan></text><rect x="456.6" y="145.0" width="37.9" height="8" rx="2" fill="#e15759"/></g>
+<g><title>assets/fonts/: 440 KiB on disk, 439 KiB uncompressed; 1 blob version of 1 file; contents not drawn at this depth</title><text x="456.6" y="173.0"><tspan class="gs-fg">fonts/</tspan><tspan class="gs-muted" dx="7.3">440 KiB</tspan></text><rect x="456.6" y="177.0" width="3.0" height="8" rx="2" fill="#e15759"/></g>
+<g><title>docs/: 13 MiB on disk, 13 MiB uncompressed; 2 blob versions of 2 files (on disk: in HEAD 7.9 KiB, deleted 13 MiB)</title><text x="240.0" y="221.0"><tspan class="gs-fg gs-strong">docs/</tspan><tspan class="gs-muted" dx="7.3">13 MiB</tspan></text><rect x="240.0" y="225.0" width="37.4" height="8" rx="2" fill="#59a14f"/></g>
+<g><title>docs/onboarding-video.mov: 13 MiB on disk, 13 MiB uncompressed; deleted (not in HEAD); 1 version; introduced in 3c850e4 on 2025-08-01</title><text x="456.6" y="205.0"><tspan class="gs-muted">onboarding-video.mov</tspan><tspan class="gs-muted" dx="7.3">13 MiB</tspan><tspan class="gs-faint gs-more" dx="7.3">deleted</tspan></text><rect x="456.6" y="209.0" width="37.3" height="8" rx="2" fill="#59a14f"/></g>
+<g><title>docs/architecture.md: 7.9 KiB on disk, 10 KiB uncompressed; in HEAD; 1 version; introduced in 3c850e4 on 2025-08-01</title><text x="456.6" y="237.0"><tspan class="gs-fg">architecture.md</tspan><tspan class="gs-muted" dx="7.3">7.9 KiB</tspan></text><rect x="456.6" y="241.0" width="3.0" height="8" rx="2" fill="#59a14f"/></g>
+<g><title>vendor/: 5.3 MiB on disk, 7.0 MiB uncompressed; 6 blob versions of 1 file (on disk: in HEAD 907 KiB, old versions 4.4 MiB)</title><text x="240.0" y="269.0"><tspan class="gs-fg gs-strong">vendor/</tspan><tspan class="gs-muted" dx="7.3">5.3 MiB</tspan></text><rect x="240.0" y="273.0" width="14.8" height="8" rx="2" fill="#b07aa1"/></g>
+<g><title>vendor/charts/: 5.3 MiB on disk, 7.0 MiB uncompressed; 6 blob versions of 1 file; contents not drawn at this depth (on disk: in HEAD 907 KiB, old versions 4.4 MiB)</title><text x="456.6" y="269.0"><tspan class="gs-fg">charts/</tspan><tspan class="gs-muted" dx="7.3">5.3 MiB</tspan></text><rect x="456.6" y="273.0" width="14.8" height="8" rx="2" fill="#b07aa1"/></g>
+<g><title>src/: 525 KiB on disk, 693 KiB uncompressed; 17 blob versions of 7 files (on disk: in HEAD 168 KiB, old versions 357 KiB)</title><text x="240.0" y="333.0"><tspan class="gs-fg gs-strong">src/</tspan><tspan class="gs-muted" dx="7.3">525 KiB</tspan></text><rect x="240.0" y="337.0" width="3.0" height="8" rx="2" fill="#76b7b2"/></g>
+<g><title>src/api/: 296 KiB on disk, 391 KiB uncompressed; 8 blob versions of 3 files; contents not drawn at this depth (on disk: in HEAD 91 KiB, old versions 205 KiB)</title><text x="456.6" y="301.0"><tspan class="gs-fg">api/</tspan><tspan class="gs-muted" dx="7.3">296 KiB</tspan></text><rect x="456.6" y="305.0" width="3.0" height="8" rx="2" fill="#76b7b2"/></g>
+<g><title>src/web/: 217 KiB on disk, 286 KiB uncompressed; 8 blob versions of 3 files; contents not drawn at this depth (on disk: in HEAD 65 KiB, old versions 152 KiB)</title><text x="456.6" y="333.0"><tspan class="gs-fg">web/</tspan><tspan class="gs-muted" dx="7.3">217 KiB</tspan></text><rect x="456.6" y="337.0" width="3.0" height="8" rx="2" fill="#76b7b2"/></g>
+<g><title>src/worker/: 12 KiB on disk, 16 KiB uncompressed; 1 blob version of 1 file; contents not drawn at this depth</title><text x="456.6" y="365.0"><tspan class="gs-fg">worker/</tspan><tspan class="gs-muted" dx="7.3">12 KiB</tspan></text><rect x="456.6" y="369.0" width="3.0" height="8" rx="2" fill="#76b7b2"/></g>
+<g><title>README.md: 5.9 KiB on disk, 7.8 KiB uncompressed; in HEAD; 1 version; introduced in e9ea251 on 2025-01-06</title><text x="240.0" y="397.0"><tspan class="gs-fg gs-strong">README.md</tspan><tspan class="gs-muted" dx="7.3">5.9 KiB</tspan></text><rect x="240.0" y="401.0" width="3.0" height="8" rx="2" fill="#edc948"/></g>
+<g><title>package.json: 1.5 KiB on disk, 2.0 KiB uncompressed; in HEAD; 1 version; introduced in e9ea251 on 2025-01-06</title><text x="240.0" y="429.0"><tspan class="gs-fg gs-strong">package.json</tspan><tspan class="gs-muted" dx="7.3">1.5 KiB</tspan></text><rect x="240.0" y="433.0" width="3.0" height="8" rx="2" fill="#9c755f"/></g>
+<text class="gs-muted gs-more" x="240.0" y="469.0">+4 more</text>
+<line class="gs-rule" x1="24" y1="492.0" x2="719.4" y2="492.0"/>
+<text class="gs-fg gs-strong" x="24" y="516.0">history weight</text>
+<rect x="24.0" y="526.0" width="25.6" height="8" fill="#4e79a7"><title>in HEAD: 4.0 MiB on disk (4,170,927 bytes), 4.3 MiB uncompressed, 18 blob versions, 3.7%</title></rect>
+<rect x="49.6" y="526.0" width="101.9" height="8" fill="#f28e2b"><title>old versions: 16 MiB on disk (16,595,137 bytes), 17 MiB uncompressed, 20 blob versions, 14.6%</title></rect>
+<rect x="151.5" y="526.0" width="567.9" height="8" fill="#e15759"><title>deleted: 88 MiB on disk (92,528,331 bytes), 88 MiB uncompressed, 8 blob versions, 81.7%</title></rect>
+<g><title>in HEAD: 4.0 MiB on disk (4,170,927 bytes), 4.3 MiB uncompressed, 18 blob versions, 3.7%</title><rect x="24.0" y="551.0" width="10" height="10" rx="2" fill="#4e79a7"/><text x="40.0" y="560.0"><tspan class="gs-fg">in HEAD</tspan><tspan class="gs-muted" dx="7.3">4.0 MiB</tspan><tspan class="gs-muted" dx="7.3">3.7%</tspan></text></g>
+<g><title>old versions: 16 MiB on disk (16,595,137 bytes), 17 MiB uncompressed, 20 blob versions, 14.6%</title><rect x="255.8" y="551.0" width="10" height="10" rx="2" fill="#f28e2b"/><text x="271.8" y="560.0"><tspan class="gs-fg">old versions</tspan><tspan class="gs-muted" dx="7.3">16 MiB</tspan><tspan class="gs-muted" dx="7.3">14.6%</tspan></text></g>
+<g><title>deleted: 88 MiB on disk (92,528,331 bytes), 88 MiB uncompressed, 8 blob versions, 81.7%</title><rect x="487.6" y="551.0" width="10" height="10" rx="2" fill="#e15759"/><text x="503.6" y="560.0"><tspan class="gs-fg">deleted</tspan><tspan class="gs-muted" dx="7.3">88 MiB</tspan><tspan class="gs-muted" dx="7.3">81.7%</tspan></text></g>
+</svg>

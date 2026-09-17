@@ -4,6 +4,8 @@ Why is my `.git` so big? `gitsize` finds the blobs that cost the most across all
 
 It only reads. It never rewrites history, never runs `gc`, never fetches.
 
+![gitsize --svg on a demo repository where a database dump, build output and a video were committed and later deleted](docs/gitsize.svg)
+
 ## Why
 
 `git count-objects -vH` tells you the repository is 486 MiB. It does not tell you that 180 MiB of that is a `database.sql` somebody committed in 2024 and deleted the next day. Finding that by hand means chaining `rev-list`, `cat-file`, `sort` and `log --find-object` together. `gitsize` does it in one command, streams every object through a single `git cat-file` process, and finds all introducing commits in one `git log` pass, so it stays fast on repositories with hundreds of thousands of objects.
@@ -13,6 +15,7 @@ It only reads. It never rewrites history, never runs `gc`, never fetches.
 - [Requirements](#requirements)
 - [Install](#install) (macOS, Linux, Windows)
 - [Usage](#usage)
+  - [SVG diagram](#svg-diagram)
 - [Use with AI agents](#use-with-ai-agents)
 - [Flags](#flags)
 - [What the numbers mean](#what-the-numbers-mean)
@@ -259,6 +262,25 @@ gitsize --json | jq '.largest_blobs[0]'
 gitsize /srv/git/project.git           # bare repository
 ```
 
+### SVG diagram
+
+`--svg` also writes a diagram of where the history weight lives. The normal output still prints. Without a file name it is saved as `<repo>-gitsize.svg` in the current directory, where `<repo>` is the repository's top-level directory name (for a bare repository, its name without `.git`):
+
+```
+$ gitsize --svg storefront > /dev/null
+gitsize: wrote storefront-gitsize.svg
+```
+
+```sh
+gitsize --svg                            # writes myapp-gitsize.svg, even from a subdirectory of myapp
+gitsize --svg docs/weight.svg ~/src/app  # choose the file; any name ending in .svg
+gitsize --svg --svg-depth 3 --sort size  # deeper tree, bars by uncompressed size
+```
+
+The diagram at the top of this README comes from a demo repository. It is a tree of directories, then files, where every version of every path in history is summed, so a file rewritten 50 times or deleted long ago weighs what it really costs in `.git`. Bars are sized by on-disk bytes (`--sort size` switches to uncompressed). It draws 2 levels by default (`--svg-depth N`, 0 for unlimited; deeper directories become one bar), the 8 heaviest entries at the first level and 5 below that, with the rest as `+N more`. Directories end in `/`. Paths that are not in HEAD (or directories with nothing left in HEAD) have a muted label marked `deleted`. Hovering a node shows exact sizes, the number of versions, how the bytes split between HEAD, old versions and deleted, and for files the introducing commit.
+
+The "history weight" strip splits all blob bytes into `in HEAD` (blobs in the HEAD commit), `old versions` (other content of paths that still exist) and `deleted` (paths absent from HEAD), using the same statuses as the table. Empty slices are left out. The file follows the viewer's light or dark scheme and has no external references, so it renders on GitHub as is.
+
 ## Use with AI agents
 
 The CLI already works well from coding agents: `gitsize --json` prints one stable JSON object and the [exit codes](#exit-codes) are documented.
@@ -322,8 +344,11 @@ Tools:
 | Tool | Access | What it answers |
 |---|---|---|
 | `gitsize_report` | read-only | Why `.git` is big: largest blobs, paths, extensions or directories in all history, status relative to HEAD, introducing commits, optional growth per month, and suggested fix commands. Same JSON as `--json`. Arguments: `dir`, `largest` (default 10, max 100), `sort`, `by`, `history`. |
+| `gitsize_svg` | writes a file | Writes the `--svg` diagram (`dir`, `output`, `depth`, `sort`) and returns the absolute path, whether an earlier gitsize SVG was replaced, and the in HEAD, old versions and deleted byte totals. `output` defaults to `<repo>-gitsize.svg` in the server's working directory. |
 
 The tool never rewrites history. The `git filter-repo` and BFG commands in `fix` are text for a human to review, and the result says so in `notes`. When rows are cut by `largest`, `notes` says how many existed. Relative `dir` values resolve against the working directory the client starts the server in, which varies by client; pass an absolute path when in doubt. Cancelling a call stops its git processes.
+
+`gitsize_svg` never overwrites a file it did not write: an existing file at `output` is replaced only when it is an SVG written by gitsize, otherwise the call fails. The output directory must already exist.
 
 gitsize has no destructive tools, so `--allow-destructive` (accepted for consistency with related tools) changes nothing.
 
@@ -344,6 +369,8 @@ For Codex, copy it to `~/.agents/skills/` instead. Contributors and agents worki
 | `--by blob\|path\|ext\|dir` | `blob` | `blob`: individual blob versions. `path`: all versions of a path summed. `ext`: by lower-cased file extension. `dir`: by the directory directly containing the file (not rolled up into parents). |
 | `--history` | off | Growth chart: bytes of blobs first committed in each month. |
 | `--json` | off | Machine-readable output (see below). |
+| `--svg [FILE]` | off | Also write an SVG diagram of where history weight lives ([SVG diagram](#svg-diagram)). Without `FILE` (or when the next argument does not end in `.svg`) it is saved as `<repo>-gitsize.svg` in the current directory. The CLI overwrites `FILE` if it exists. |
+| `--svg-depth N` | `2` | Levels drawn in the SVG; `0` is unlimited. Only valid with `--svg`. |
 | `--no-color` | off | Disable colour. Colour is also off when `NO_COLOR` is set or stdout is not a terminal. |
 | `--mcp` | off | Run as an MCP server on stdin/stdout. Other flags are ignored. See [Use with AI agents](#use-with-ai-agents). |
 | `--allow-destructive` | off | Only valid with `--mcp`. Accepted for consistency; gitsize has no destructive tools. |
@@ -484,6 +511,7 @@ Other shapes:
 - **Git LFS** is detected when HEAD's `.gitattributes` uses `filter=lfs` or a local `.git/lfs` directory exists. LFS-only history without either is not detected.
 - **git older than 2.50** cannot print object paths NUL-delimited, so a path containing a newline is shown truncated at the newline. Sizes and counts are still correct.
 - **Fix commands** use POSIX shell quoting (run them in Git Bash on Windows). BFG matches by file name, so `bfg --delete-files` also strips same-named files in other directories from older history. Paths that are now directories in HEAD are never suggested.
+- **SVG diagram** sums blob versions under the path `rev-list` reached them by (see "One path per blob"), and a renamed file appears under both names. The strip's `in HEAD` counts a blob as in HEAD when the same content is in the HEAD commit at any path.
 - `.git` on Windows is the sum of file sizes, not allocated blocks, so it can differ slightly from Explorer's "size on disk".
 
 ## License
