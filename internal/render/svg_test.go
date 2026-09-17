@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"io"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -120,7 +121,7 @@ func TestSVGSplitSumsToWhole(t *testing.T) {
 	}
 	// The drawn strip segments end flush with the strip.
 	out := renderSVG(t, svgSample())
-	if strings.Count(out, `height="8" fill="#`) != 2 {
+	if n := len(regexp.MustCompile(`height="8" fill="#[0-9a-f]+"><title>`).FindAllString(out, -1)); n != 2 {
 		t.Errorf("want 2 strip segments")
 	}
 }
@@ -141,5 +142,42 @@ func TestSVGFileName(t *testing.T) {
 func TestSVGWithoutTree(t *testing.T) {
 	if err := SVG(io.Discard, &scan.Report{}); err == nil {
 		t.Error("expected an error without a tree")
+	}
+}
+
+func TestSVGBarsSplitByStatus(t *testing.T) {
+	n := &scan.TreeNode{Name: "data", Dir: true, StatusDisk: [4]int64{25, 0, 75, 0}}
+	var b strings.Builder
+	svgStackedBar(&b, 10, 20, 100, n, 7)
+	out := b.String()
+	for _, want := range []string{
+		`<clipPath id="gs-bar-7">`,
+		`clip-path="url(#gs-bar-7)"`,
+		`width="25.0" height="8" fill="` + svgStatusColors[0] + `"`,                   // in HEAD
+		`x="35.0" y="20.0" width="75.0" height="8" fill="` + svgStatusColors[2] + `"`, // deleted, after it
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in %s", want, out)
+		}
+	}
+	if strings.Contains(out, svgStatusColors[1]) {
+		t.Error("empty status should draw no segment")
+	}
+	// Bars and strip share one colour meaning.
+	if svgStatusColors[2] != svgPalette[2] {
+		t.Error("deleted must be the strip's deleted colour")
+	}
+	// Every clip id in a full render is unique.
+	out = renderSVG(t, svgSample())
+	ids := regexp.MustCompile(`<clipPath id="(gs-bar-\d+)">`).FindAllStringSubmatch(out, -1)
+	seen := map[string]bool{}
+	for _, m := range ids {
+		if seen[m[1]] {
+			t.Errorf("duplicate clip id %s", m[1])
+		}
+		seen[m[1]] = true
+	}
+	if len(ids) == 0 {
+		t.Error("full render has no stacked bars")
 	}
 }

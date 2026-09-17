@@ -233,6 +233,7 @@ func svgBody(r *scan.Report) string {
 	}
 	b.WriteString("</g>\n")
 
+	clipID := 0 // unique ids for the rounded clip of each stacked bar
 	for _, it := range items {
 		x, y := colX[it.depth], yOf(it)
 		if it.more > 0 {
@@ -259,7 +260,8 @@ func svgBody(r *scan.Report) string {
 		if it.depth == 0 {
 			fmt.Fprintf(&b, `<rect class="gs-rootbar" x="%.1f" y="%.1f" width="%.1f" height="%.0f" rx="2"/>`, x, y+1, barW(it), svgBarH)
 		} else {
-			fmt.Fprintf(&b, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.0f" rx="2" fill="%s"/>`, x, y+1, barW(it), svgBarH, it.color)
+			svgStackedBar(&b, x, y+1, barW(it), n, clipID)
+			clipID++
 		}
 		b.WriteString("</g>\n")
 	}
@@ -376,12 +378,43 @@ type svgSplitEntry struct {
 	Size  bool // Bytes are uncompressed
 }
 
+// svgStatusColors colour history weight by blob status, in the order of
+// TreeNode.StatusDisk: in HEAD, old versions, deleted, unknown. The tree bars
+// and the strip use the same colours, so a red bar segment always means
+// bytes from deleted files.
+var svgStatusColors = [4]string{svgPalette[0], svgPalette[1], svgPalette[2], svgGrey}
+
+// svgStackedBar draws a node's bar split by blob status. The split uses
+// on-disk bytes, the only per-status measure recorded; with --sort size the
+// bar length is uncompressed and the split keeps the on-disk proportions.
+func svgStackedBar(b *strings.Builder, x, y, w float64, n *scan.TreeNode, id int) {
+	var total int64
+	for _, d := range n.StatusDisk {
+		total += d
+	}
+	if total == 0 {
+		fmt.Fprintf(b, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.0f" rx="2" fill="%s"/>`, x, y, w, svgBarH, svgGrey)
+		return
+	}
+	fmt.Fprintf(b, `<clipPath id="gs-bar-%d"><rect x="%.1f" y="%.1f" width="%.1f" height="%.0f" rx="2"/></clipPath><g clip-path="url(#gs-bar-%d)">`, id, x, y, w, svgBarH, id)
+	sx := x
+	for i, d := range n.StatusDisk {
+		if d == 0 {
+			continue
+		}
+		sw := w * float64(d) / float64(total)
+		fmt.Fprintf(b, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.0f" fill="%s"/>`, sx, y, sw, svgBarH, svgStatusColors[i])
+		sx += sw
+	}
+	b.WriteString("</g>")
+}
+
 // svgSplit returns the non-empty slices of history weight by status, in the
 // order in HEAD, old versions, deleted, unknown. Shares sum to 1. Empty
 // slices are left out instead of showing as 0.0%.
 func svgSplit(t *scan.Tree, k analyze.SortKey) []svgSplitEntry {
 	labels := []string{"in HEAD", "old versions", "deleted", "unknown"}
-	colors := []string{svgPalette[0], svgPalette[1], svgPalette[2], svgGrey}
+	colors := svgStatusColors
 	var total int64
 	for _, s := range t.Split {
 		if k == analyze.SortSize {
